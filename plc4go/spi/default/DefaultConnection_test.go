@@ -1,0 +1,811 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
+package _default
+
+import (
+	"context"
+	"testing"
+
+	"github.com/rs/zerolog/log"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
+
+	apiModel "github.com/apache/plc4x/plc4go/pkg/api/model"
+	"github.com/apache/plc4x/plc4go/spi"
+	"github.com/apache/plc4x/plc4go/spi/options"
+	"github.com/apache/plc4x/plc4go/spi/testutils"
+	"github.com/apache/plc4x/plc4go/spi/transports"
+)
+
+func TestDefaultConnectionMetadata_CanBrowse(t *testing.T) {
+	type fields struct {
+		ConnectionAttributes map[string]string
+		ProvidesReading      bool
+		ProvidesWriting      bool
+		ProvidesSubscribing  bool
+		ProvidesBrowsing     bool
+	}
+	tests := []struct {
+		name   string
+		fields fields
+		want   bool
+	}{
+		{
+			name: "can't browse",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := DefaultConnectionMetadata{
+				ConnectionAttributes: tt.fields.ConnectionAttributes,
+				ProvidesReading:      tt.fields.ProvidesReading,
+				ProvidesWriting:      tt.fields.ProvidesWriting,
+				ProvidesSubscribing:  tt.fields.ProvidesSubscribing,
+				ProvidesBrowsing:     tt.fields.ProvidesBrowsing,
+			}
+			assert.Equalf(t, tt.want, m.CanBrowse(), "CanBrowse()")
+		})
+	}
+}
+
+func TestDefaultConnectionMetadata_CanRead(t *testing.T) {
+	type fields struct {
+		ConnectionAttributes map[string]string
+		ProvidesReading      bool
+		ProvidesWriting      bool
+		ProvidesSubscribing  bool
+		ProvidesBrowsing     bool
+	}
+	tests := []struct {
+		name   string
+		fields fields
+		want   bool
+	}{
+		{
+			name: "can't read",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := DefaultConnectionMetadata{
+				ConnectionAttributes: tt.fields.ConnectionAttributes,
+				ProvidesReading:      tt.fields.ProvidesReading,
+				ProvidesWriting:      tt.fields.ProvidesWriting,
+				ProvidesSubscribing:  tt.fields.ProvidesSubscribing,
+				ProvidesBrowsing:     tt.fields.ProvidesBrowsing,
+			}
+			assert.Equalf(t, tt.want, m.CanRead(), "CanRead()")
+		})
+	}
+}
+
+func TestDefaultConnectionMetadata_CanSubscribe(t *testing.T) {
+	type fields struct {
+		ConnectionAttributes map[string]string
+		ProvidesReading      bool
+		ProvidesWriting      bool
+		ProvidesSubscribing  bool
+		ProvidesBrowsing     bool
+	}
+	tests := []struct {
+		name   string
+		fields fields
+		want   bool
+	}{
+		{
+			name: "can't subscribe",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := DefaultConnectionMetadata{
+				ConnectionAttributes: tt.fields.ConnectionAttributes,
+				ProvidesReading:      tt.fields.ProvidesReading,
+				ProvidesWriting:      tt.fields.ProvidesWriting,
+				ProvidesSubscribing:  tt.fields.ProvidesSubscribing,
+				ProvidesBrowsing:     tt.fields.ProvidesBrowsing,
+			}
+			assert.Equalf(t, tt.want, m.CanSubscribe(), "CanSubscribe()")
+		})
+	}
+}
+
+func TestDefaultConnectionMetadata_CanWrite(t *testing.T) {
+	type fields struct {
+		ConnectionAttributes map[string]string
+		ProvidesReading      bool
+		ProvidesWriting      bool
+		ProvidesSubscribing  bool
+		ProvidesBrowsing     bool
+	}
+	tests := []struct {
+		name   string
+		fields fields
+		want   bool
+	}{
+		{
+			name: "can't write",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := DefaultConnectionMetadata{
+				ConnectionAttributes: tt.fields.ConnectionAttributes,
+				ProvidesReading:      tt.fields.ProvidesReading,
+				ProvidesWriting:      tt.fields.ProvidesWriting,
+				ProvidesSubscribing:  tt.fields.ProvidesSubscribing,
+				ProvidesBrowsing:     tt.fields.ProvidesBrowsing,
+			}
+			assert.Equalf(t, tt.want, m.CanWrite(), "CanWrite()")
+		})
+	}
+}
+
+func TestDefaultConnectionMetadata_GetConnectionAttributes(t *testing.T) {
+	type fields struct {
+		ConnectionAttributes map[string]string
+		ProvidesReading      bool
+		ProvidesWriting      bool
+		ProvidesSubscribing  bool
+		ProvidesBrowsing     bool
+	}
+	tests := []struct {
+		name   string
+		fields fields
+		want   map[string]string
+	}{
+		{
+			name: "just get it",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := DefaultConnectionMetadata{
+				ConnectionAttributes: tt.fields.ConnectionAttributes,
+				ProvidesReading:      tt.fields.ProvidesReading,
+				ProvidesWriting:      tt.fields.ProvidesWriting,
+				ProvidesSubscribing:  tt.fields.ProvidesSubscribing,
+				ProvidesBrowsing:     tt.fields.ProvidesBrowsing,
+			}
+			assert.Equalf(t, tt.want, m.GetConnectionAttributes(), "GetConnectionAttributes()")
+		})
+	}
+}
+
+func TestNewDefaultConnection(t *testing.T) {
+	type args struct {
+		requirements DefaultConnectionRequirements
+		options      []options.WithOption
+	}
+	tests := []struct {
+		name string
+		args args
+		want DefaultConnection
+	}{
+		{
+			name: "just create it",
+			want: &defaultConnection{
+				log: log.Logger,
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equalf(t, tt.want, NewDefaultConnection(tt.args.requirements, tt.args.options...), "NewDefaultConnection(%v, %v)", tt.args.requirements, tt.args.options)
+		})
+	}
+}
+
+func TestWithPlcTagHandler(t *testing.T) {
+	type args struct {
+		tagHandler spi.PlcTagHandler
+	}
+	tests := []struct {
+		name string
+		args args
+		want options.WithOption
+	}{
+		{
+			name: "create it",
+			want: withPlcTagHandler{},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equalf(t, tt.want, WithPlcTagHandler(tt.args.tagHandler), "WithPlcTagHandler(%v)", tt.args.tagHandler)
+		})
+	}
+}
+
+func TestWithPlcValueHandler(t *testing.T) {
+	type args struct {
+		plcValueHandler spi.PlcValueHandler
+	}
+	tests := []struct {
+		name string
+		args args
+		want options.WithOption
+	}{
+		{
+			name: "create it",
+			want: withPlcValueHandler{},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equalf(t, tt.want, WithPlcValueHandler(tt.args.plcValueHandler), "WithPlcValueHandler(%v)", tt.args.plcValueHandler)
+		})
+	}
+}
+
+func Test_buildDefaultConnection(t *testing.T) {
+	type args struct {
+		requirements DefaultConnectionRequirements
+		options      []options.WithOption
+	}
+	tests := []struct {
+		name string
+		args args
+		want DefaultConnection
+	}{
+		{
+			name: "build it",
+			want: &defaultConnection{
+				log: log.Logger,
+			},
+		},
+		{
+			name: "build it with plc tag handler",
+			args: args{
+				options: []options.WithOption{
+					withPlcTagHandler{},
+				},
+			},
+			want: &defaultConnection{
+				log: log.Logger,
+			},
+		},
+		{
+			name: "build it with plc value handler",
+			args: args{
+				options: []options.WithOption{
+					withPlcValueHandler{},
+				},
+			},
+			want: &defaultConnection{
+				log: log.Logger,
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equalf(t, tt.want, buildDefaultConnection(tt.args.requirements, tt.args.options...), "buildDefaultConnection(%v, %v)", tt.args.requirements, tt.args.options)
+		})
+	}
+}
+
+func Test_defaultConnection_Close(t *testing.T) {
+	type fields struct {
+		DefaultConnectionRequirements DefaultConnectionRequirements
+		tagHandler                    spi.PlcTagHandler
+		valueHandler                  spi.PlcValueHandler
+	}
+	tests := []struct {
+		name    string
+		fields  fields
+		setup   func(*testing.T, *fields)
+		wantErr assert.ErrorAssertionFunc
+	}{
+		{
+			name: "close",
+			setup: func(t *testing.T, fields *fields) {
+				requirements := NewMockDefaultConnectionRequirements(t)
+				requirements.EXPECT().GetMessageCodec().Return(nil)
+				fields.DefaultConnectionRequirements = requirements
+			},
+			wantErr: assert.NoError,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.setup != nil {
+				tt.setup(t, &tt.fields)
+			}
+			d := &defaultConnection{
+				DefaultConnectionRequirements: tt.fields.DefaultConnectionRequirements,
+				tagHandler:                    tt.fields.tagHandler,
+				valueHandler:                  tt.fields.valueHandler,
+				log:                           testutils.ProduceTestingLogger(t),
+			}
+			tt.wantErr(t, d.Close())
+		})
+	}
+}
+
+func Test_defaultConnection_BrowseRequestBuilder(t *testing.T) {
+	type fields struct {
+		DefaultConnectionRequirements DefaultConnectionRequirements
+		tagHandler                    spi.PlcTagHandler
+		valueHandler                  spi.PlcValueHandler
+	}
+	tests := []struct {
+		name   string
+		fields fields
+		setup  func(t *testing.T, fields *fields)
+		want   apiModel.PlcBrowseRequestBuilder
+	}{
+		{
+			name: "create it",
+			setup: func(t *testing.T, fields *fields) {
+				fields.DefaultConnectionRequirements = NewMockDefaultConnectionRequirements(t)
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.setup != nil {
+				tt.setup(t, &tt.fields)
+			}
+			defer func() {
+				if err := recover(); err != nil {
+					assert.Equal(t, "not provided by actual connection", err)
+				} else {
+					t.Error("should fail")
+				}
+			}()
+			d := &defaultConnection{
+				DefaultConnectionRequirements: tt.fields.DefaultConnectionRequirements,
+				tagHandler:                    tt.fields.tagHandler,
+				valueHandler:                  tt.fields.valueHandler,
+			}
+			assert.Equalf(t, tt.want, d.BrowseRequestBuilder(), "BrowseRequestBuilder()")
+		})
+	}
+}
+
+func Test_defaultConnection_Connect(t *testing.T) {
+	type fields struct {
+		DefaultConnectionRequirements DefaultConnectionRequirements
+		tagHandler                    spi.PlcTagHandler
+		valueHandler                  spi.PlcValueHandler
+	}
+	type args struct {
+		ctx context.Context
+	}
+	tests := []struct {
+		name    string
+		fields  fields
+		args    args
+		setup   func(t *testing.T, fields *fields, args *args)
+		wantErr assert.ErrorAssertionFunc
+	}{
+		{
+			name: "connect it",
+			setup: func(t *testing.T, fields *fields, args *args) {
+				requirements := NewMockDefaultConnectionRequirements(t)
+				codec := NewMockMessageCodec(t)
+				{
+					codec.EXPECT().Connect(mock.Anything).Return(nil)
+				}
+				expect := requirements.EXPECT()
+				expect.GetMessageCodec().Return(codec)
+				fields.DefaultConnectionRequirements = requirements
+			},
+			wantErr: assert.NoError,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.setup != nil {
+				tt.setup(t, &tt.fields, &tt.args)
+			}
+			d := &defaultConnection{
+				DefaultConnectionRequirements: tt.fields.DefaultConnectionRequirements,
+				tagHandler:                    tt.fields.tagHandler,
+				valueHandler:                  tt.fields.valueHandler,
+			}
+			err := d.Connect(tt.args.ctx)
+			assert.Truef(t, tt.wantErr(t, err), "Connect(%v)", tt.args.ctx)
+		})
+	}
+}
+
+func Test_defaultConnection_GetMetadata(t *testing.T) {
+	type fields struct {
+		DefaultConnectionRequirements DefaultConnectionRequirements
+		tagHandler                    spi.PlcTagHandler
+		valueHandler                  spi.PlcValueHandler
+	}
+	tests := []struct {
+		name   string
+		fields fields
+		want   apiModel.PlcConnectionMetadata
+	}{
+		{
+			name: "get it",
+			want: &DefaultConnectionMetadata{},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			d := &defaultConnection{
+				DefaultConnectionRequirements: tt.fields.DefaultConnectionRequirements,
+				tagHandler:                    tt.fields.tagHandler,
+				valueHandler:                  tt.fields.valueHandler,
+			}
+			assert.Equalf(t, tt.want, d.GetMetadata(), "GetMetadata()")
+		})
+	}
+}
+
+func Test_defaultConnection_GetPlcTagHandler(t *testing.T) {
+	type fields struct {
+		DefaultConnectionRequirements DefaultConnectionRequirements
+		tagHandler                    spi.PlcTagHandler
+		valueHandler                  spi.PlcValueHandler
+	}
+	tests := []struct {
+		name   string
+		fields fields
+		want   spi.PlcTagHandler
+	}{
+		{
+			name: "get it",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			d := &defaultConnection{
+				DefaultConnectionRequirements: tt.fields.DefaultConnectionRequirements,
+				tagHandler:                    tt.fields.tagHandler,
+				valueHandler:                  tt.fields.valueHandler,
+			}
+			assert.Equalf(t, tt.want, d.GetPlcTagHandler(), "GetPlcTagHandler()")
+		})
+	}
+}
+
+func Test_defaultConnection_GetPlcValueHandler(t *testing.T) {
+	type fields struct {
+		DefaultConnectionRequirements DefaultConnectionRequirements
+		tagHandler                    spi.PlcTagHandler
+		valueHandler                  spi.PlcValueHandler
+	}
+	tests := []struct {
+		name   string
+		fields fields
+		want   spi.PlcValueHandler
+	}{
+		{
+			name: "get it",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			d := &defaultConnection{
+				DefaultConnectionRequirements: tt.fields.DefaultConnectionRequirements,
+				tagHandler:                    tt.fields.tagHandler,
+				valueHandler:                  tt.fields.valueHandler,
+			}
+			assert.Equalf(t, tt.want, d.GetPlcValueHandler(), "GetPlcValueHandler()")
+		})
+	}
+}
+
+func Test_defaultConnection_GetTransportInstance(t *testing.T) {
+	type fields struct {
+		DefaultConnectionRequirements DefaultConnectionRequirements
+		tagHandler                    spi.PlcTagHandler
+		valueHandler                  spi.PlcValueHandler
+	}
+
+	tests := []struct {
+		name   string
+		fields fields
+		setup  func(t *testing.T, fields *fields, want *transports.TransportInstance)
+		want   transports.TransportInstance
+	}{
+		{
+			name: "get it",
+			setup: func(t *testing.T, fields *fields, want *transports.TransportInstance) {
+				requirements := NewMockDefaultConnectionRequirements(t)
+				codec := NewMockMessageCodec(t)
+				{
+					instance := NewMockTransportInstance(t)
+					codec.EXPECT().GetTransportInstance().Return(instance)
+					*want = instance
+				}
+				requirements.EXPECT().GetMessageCodec().Return(codec)
+				fields.DefaultConnectionRequirements = requirements
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.setup != nil {
+				tt.setup(t, &tt.fields, &tt.want)
+			}
+			d := &defaultConnection{
+				DefaultConnectionRequirements: tt.fields.DefaultConnectionRequirements,
+				tagHandler:                    tt.fields.tagHandler,
+				valueHandler:                  tt.fields.valueHandler,
+			}
+			assert.Equalf(t, tt.want, d.GetTransportInstance(), "GetTransportInstance()")
+		})
+	}
+}
+
+func Test_defaultConnection_IsConnected(t *testing.T) {
+	type fields struct {
+		DefaultConnectionRequirements DefaultConnectionRequirements
+		tagHandler                    spi.PlcTagHandler
+		valueHandler                  spi.PlcValueHandler
+	}
+	tests := []struct {
+		name   string
+		fields fields
+		want   bool
+	}{
+		{
+			name: "is it",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			d := &defaultConnection{
+				DefaultConnectionRequirements: tt.fields.DefaultConnectionRequirements,
+				tagHandler:                    tt.fields.tagHandler,
+				valueHandler:                  tt.fields.valueHandler,
+			}
+			assert.Equalf(t, tt.want, d.IsConnected(), "IsConnected()")
+		})
+	}
+}
+
+func Test_defaultConnection_Ping(t *testing.T) {
+	type fields struct {
+		DefaultConnectionRequirements DefaultConnectionRequirements
+		tagHandler                    spi.PlcTagHandler
+		valueHandler                  spi.PlcValueHandler
+	}
+	type args struct {
+		ctx context.Context
+	}
+	tests := []struct {
+		name      string
+		fields    fields
+		args      args
+		setup     func(t *testing.T, fields *fields)
+		connected bool
+		wantErr   assert.ErrorAssertionFunc
+	}{
+		{
+			name: "ping it",
+			args: args{
+				ctx: t.Context(),
+			},
+			setup: func(t *testing.T, fields *fields) {
+				requirements := NewMockDefaultConnectionRequirements(t)
+				{
+					requirements.EXPECT().IsConnected().Return(false)
+				}
+				fields.DefaultConnectionRequirements = requirements
+			},
+			wantErr: assert.Error,
+		},
+		{
+			name: "ping it connected",
+			args: args{
+				ctx: t.Context(),
+			},
+			setup: func(t *testing.T, fields *fields) {
+				requirements := NewMockDefaultConnectionRequirements(t)
+				{
+					requirements.EXPECT().IsConnected().Return(true)
+				}
+				fields.DefaultConnectionRequirements = requirements
+			},
+			connected: true,
+			wantErr:   assert.NoError,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.setup != nil {
+				tt.setup(t, &tt.fields)
+			}
+			d := &defaultConnection{
+				DefaultConnectionRequirements: tt.fields.DefaultConnectionRequirements,
+				tagHandler:                    tt.fields.tagHandler,
+				valueHandler:                  tt.fields.valueHandler,
+			}
+			if tt.connected {
+				d.connected.Store(true)
+			}
+			assert.Truef(t, tt.wantErr(t, d.Ping(tt.args.ctx)), "Ping()")
+		})
+	}
+}
+
+func Test_defaultConnection_ReadRequestBuilder(t *testing.T) {
+	type fields struct {
+		DefaultConnectionRequirements DefaultConnectionRequirements
+		tagHandler                    spi.PlcTagHandler
+		valueHandler                  spi.PlcValueHandler
+	}
+	tests := []struct {
+		name   string
+		fields fields
+		want   apiModel.PlcReadRequestBuilder
+	}{
+		{
+			name: "create it",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			defer func() {
+				if err := recover(); err != nil {
+					assert.Equal(t, "not provided by actual connection", err)
+				} else {
+					t.Error("should fail")
+				}
+			}()
+			d := &defaultConnection{
+				DefaultConnectionRequirements: tt.fields.DefaultConnectionRequirements,
+				tagHandler:                    tt.fields.tagHandler,
+				valueHandler:                  tt.fields.valueHandler,
+			}
+			assert.Equalf(t, tt.want, d.ReadRequestBuilder(), "ReadRequestBuilder()")
+		})
+	}
+}
+
+func Test_defaultConnection_SetConnected(t *testing.T) {
+	type fields struct {
+		DefaultConnectionRequirements DefaultConnectionRequirements
+		tagHandler                    spi.PlcTagHandler
+		valueHandler                  spi.PlcValueHandler
+	}
+	type args struct {
+		connected bool
+	}
+	tests := []struct {
+		name   string
+		fields fields
+		args   args
+	}{
+		{
+			name: "set it",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			d := &defaultConnection{
+				DefaultConnectionRequirements: tt.fields.DefaultConnectionRequirements,
+				tagHandler:                    tt.fields.tagHandler,
+				valueHandler:                  tt.fields.valueHandler,
+			}
+			d.SetConnected(tt.args.connected)
+		})
+	}
+}
+
+func Test_defaultConnection_SubscriptionRequestBuilder(t *testing.T) {
+	type fields struct {
+		DefaultConnectionRequirements DefaultConnectionRequirements
+		tagHandler                    spi.PlcTagHandler
+		valueHandler                  spi.PlcValueHandler
+	}
+	tests := []struct {
+		name   string
+		fields fields
+		want   apiModel.PlcSubscriptionRequestBuilder
+	}{
+		{
+			name: "create it",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			defer func() {
+				if err := recover(); err != nil {
+					assert.Equal(t, "not provided by actual connection", err)
+				} else {
+					t.Error("should fail")
+				}
+			}()
+			d := &defaultConnection{
+				DefaultConnectionRequirements: tt.fields.DefaultConnectionRequirements,
+				tagHandler:                    tt.fields.tagHandler,
+				valueHandler:                  tt.fields.valueHandler,
+			}
+			assert.Equalf(t, tt.want, d.SubscriptionRequestBuilder(), "SubscriptionRequestBuilder()")
+		})
+	}
+}
+
+func Test_defaultConnection_UnsubscriptionRequestBuilder(t *testing.T) {
+	type fields struct {
+		DefaultConnectionRequirements DefaultConnectionRequirements
+		tagHandler                    spi.PlcTagHandler
+		valueHandler                  spi.PlcValueHandler
+	}
+	tests := []struct {
+		name   string
+		fields fields
+		want   apiModel.PlcUnsubscriptionRequestBuilder
+	}{
+		{
+			name: "create it",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			defer func() {
+				if err := recover(); err != nil {
+					assert.Equal(t, "not provided by actual connection", err)
+				} else {
+					t.Error("should fail")
+				}
+			}()
+			d := &defaultConnection{
+				DefaultConnectionRequirements: tt.fields.DefaultConnectionRequirements,
+				tagHandler:                    tt.fields.tagHandler,
+				valueHandler:                  tt.fields.valueHandler,
+			}
+			assert.Equalf(t, tt.want, d.UnsubscriptionRequestBuilder(), "UnsubscriptionRequestBuilder()")
+		})
+	}
+}
+
+func Test_defaultConnection_WriteRequestBuilder(t *testing.T) {
+	type fields struct {
+		DefaultConnectionRequirements DefaultConnectionRequirements
+		tagHandler                    spi.PlcTagHandler
+		valueHandler                  spi.PlcValueHandler
+	}
+	tests := []struct {
+		name   string
+		fields fields
+		want   apiModel.PlcWriteRequestBuilder
+	}{
+		{
+			name: "create it",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			defer func() {
+				if err := recover(); err != nil {
+					assert.Equal(t, "not provided by actual connection", err)
+				} else {
+					t.Error("should fail")
+				}
+			}()
+			d := &defaultConnection{
+				DefaultConnectionRequirements: tt.fields.DefaultConnectionRequirements,
+				tagHandler:                    tt.fields.tagHandler,
+				valueHandler:                  tt.fields.valueHandler,
+			}
+			assert.Equalf(t, tt.want, d.WriteRequestBuilder(), "WriteRequestBuilder()")
+		})
+	}
+}

@@ -1,0 +1,59 @@
+//
+//  Licensed to the Apache Software Foundation (ASF) under one or more
+//  contributor license agreements.  See the NOTICE file distributed with
+//  this work for additional information regarding copyright ownership.
+//  The ASF licenses this file to You under the Apache License, Version 2.0
+//  (the "License"); you may not use this file except in compliance with
+//  the License.  You may obtain a copy of the License at
+//
+//      https://www.apache.org/licenses/LICENSE-2.0
+//
+//  Unless required by applicable law or agreed to in writing, software
+//  distributed under the License is distributed on an "AS IS" BASIS,
+//  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+//  See the License for the specific language governing permissions and
+//  limitations under the License.
+//
+:imagesdir: ../../images/
+:icons: font
+
+= Transports
+
+A driver speaks a protocol; a transport carries it. Which transports a driver supports is part of
+its metadata, and the connection string names the one you want between the protocol code and the
+`://`:
+
+[source]
+----
+modbus-tcp:tls://192.168.1.100:802
+        ^^^ ^^^
+    protocol transport
+----
+
+Leave it out and the driver's default transport is used. Every option a transport accepts is
+prefixed with its code, so `tcp.connect-timeout-ms` and `cotp.tpdu-size` stay apart in one
+connection string. The tables on the pages below are generated from the transports themselves.
+
+== Network
+
+- xref:transports/tcp.adoc[TCP] - plain TCP client socket
+- xref:transports/udp.adoc[UDP] - connectionless datagrams, including broadcast
+- xref:transports/tls.adoc[TLS] - TCP secured with certificates
+- xref:transports/tls-psk.adoc[TLS-PSK] - TCP secured with a pre-shared key
+- xref:transports/cotp.adoc[COTP] - ISO-on-TCP, as used by Siemens S7
+- xref:transports/raw-socket.adoc[Raw Socket] - Ethernet frames below IP
+
+== Serial and fieldbus
+
+- xref:transports/serial.adoc[Serial Port] - RS-232, RS-485 and USB adapters
+- xref:transports/can.adoc[CAN bus] - the shared API the CAN transports implement
+- xref:transports/socketcan.adoc[SocketCAN] - a real CAN bus through the Linux kernel
+- xref:transports/can-virtualcan.adoc[Virtual CAN] - an in-memory CAN bus
+
+== Offline
+
+- xref:transports/pcap-replay.adoc[PCAP Replay] - replays a recorded capture instead of a device
+
+NOTE: A `test` transport is also registered. It is an in-memory stand-in used by PLC4X's own unit
+tests, it is not usable from an application, and it is deliberately left out of the supported
+transport lists on the protocol pages. If you see it in driver metadata, filter it out.

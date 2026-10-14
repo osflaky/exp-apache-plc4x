@@ -1,0 +1,49 @@
+//
+//  Licensed to the Apache Software Foundation (ASF) under one or more
+//  contributor license agreements.  See the NOTICE file distributed with
+//  this work for additional information regarding copyright ownership.
+//  The ASF licenses this file to You under the Apache License, Version 2.0
+//  (the "License"); you may not use this file except in compliance with
+//  the License.  You may obtain a copy of the License at
+//
+//      https://www.apache.org/licenses/LICENSE-2.0
+//
+//  Unless required by applicable law or agreed to in writing, software
+//  distributed under the License is distributed on an "AS IS" BASIS,
+//  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+//  See the License for the specific language governing permissions and
+//  limitations under the License.
+//
+:imagesdir: ../../images/
+:icons: font
+
+= SocketCAN
+
+SocketCAN is the Linux kernel's way of exposing a CAN bus, and this transport is a client of it.
+It is one of the two concrete xref:transports/can.adoc[CAN transports]; the other is the in-memory
+xref:transports/can-virtualcan.adoc[Virtual CAN].
+
+Because it goes through the kernel, PLC4X does not handle bus access, arbitration or timing - the
+CAN layer below does. It has been used successfully with the `vcan` and `gs_usb` drivers.
+
+NOTE: Linux only. SocketCAN has its own frame representation - fixed-length frames (a CAN 2.0A
+frame always takes 16 bytes) and a 29-bit identifier field where a standard CAN frame uses 11,
+with the remaining 3 bits carrying flags.
+
+== Transport syntax
+
+----
+{name of the CAN interface}
+----
+
+.Example
+[source]
+----
+canopen:can-socketcan://can0
+canopen:can-socketcan://vcan0?can-socketcan.read-timeout-ms=500
+----
+
+The interface can also be named with the `can-socketcan.interface-name` option instead; the
+address segment wins if both name one. One of the two has to be given.
+
+include::partial$transport-can-socketcan.adoc[]

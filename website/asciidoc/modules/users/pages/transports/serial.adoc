@@ -1,0 +1,47 @@
+//
+//  Licensed to the Apache Software Foundation (ASF) under one or more
+//  contributor license agreements.  See the NOTICE file distributed with
+//  this work for additional information regarding copyright ownership.
+//  The ASF licenses this file to You under the Apache License, Version 2.0
+//  (the "License"); you may not use this file except in compliance with
+//  the License.  You may obtain a copy of the License at
+//
+//      https://www.apache.org/licenses/LICENSE-2.0
+//
+//  Unless required by applicable law or agreed to in writing, software
+//  distributed under the License is distributed on an "AS IS" BASIS,
+//  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+//  See the License for the specific language governing permissions and
+//  limitations under the License.
+//
+:imagesdir: ../../images/
+:icons: font
+
+= Serial Port
+
+Communication over a serial port (RS-232, RS-485, or a USB adapter presenting itself as one).
+
+== Transport syntax
+
+----
+{name of the serial port}
+----
+
+The name depends on the operating system:
+
+- Windows: `COM1`
+- Linux: `/dev/ttyS0`, `/dev/ttyUSB0`
+- macOS: `/dev/tty.usbserial-XXXX`
+
+.Example
+[source]
+----
+modbus-rtu://COM1?serial.baud-rate=19200
+modbus-rtu:serial:///dev/ttyUSB0?serial.baud-rate=9600&serial.parity=even
+----
+
+include::partial$transport-serial.adoc[]
+
+On an RS-485 bus several devices share one physical port. `serial.reuse-port=true` lets several
+PLC4X connections share a single open port for that case - read the warning on that option before
+using it.

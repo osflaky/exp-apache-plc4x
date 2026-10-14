@@ -1,0 +1,105 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
+package model
+
+import (
+	"context"
+
+	"github.com/apache/plc4x/plc4go/spi/utils"
+)
+
+// crc16df1Update accumulates CRC-16/DF-1 (CRC-16/ARC variant) over data.
+// Parameters: poly=0x8005, init=0x0000, reflectIn=true, reflectOut=true, finalXor=0.
+// The reflected polynomial is 0xA001.
+func crc16df1Update(crc uint16, data []byte) uint16 {
+	const refPoly uint16 = 0xA001
+	for _, b := range data {
+		crc ^= uint16(b)
+		for range 8 {
+			if crc&1 != 0 {
+				crc = (crc >> 1) ^ refPoly
+			} else {
+				crc >>= 1
+			}
+		}
+	}
+	return crc
+}
+
+func CrcCheck(ctx context.Context, destinationAddress uint8, sourceAddress uint8, command DF1Command) func() (uint16, error) {
+	return func() (uint16, error) {
+		df1Crc := uint16(0)
+		df1Crc = crc16df1Update(df1Crc, []byte{destinationAddress, sourceAddress})
+		bytes, err := command.Serialize()
+		if err != nil {
+			return 0, err
+		}
+		df1Crc = crc16df1Update(df1Crc, bytes)
+		df1Crc = crc16df1Update(df1Crc, []byte{0x03})
+		return df1Crc, nil
+	}
+}
+
+func DataTerminate(ctx context.Context, io utils.ReadBuffer) func([]byte) bool {
+	return func([]byte) bool {
+		rbbb := io.(utils.ReadBufferByteBased)
+		// The byte sequence 0x10 followed by 0x03 indicates the end of the message,
+		// so if we would read this, we abort the loop and stop reading data.
+		return rbbb.PeekByte(0) == 0x10 && rbbb.PeekByte(1) == 0x03
+	}
+}
+
+func ReadData(ctx context.Context, io utils.ReadBuffer) func(context.Context) (uint8, error) {
+	return func(context.Context) (uint8, error) {
+		rbbb := io.(utils.ReadBufferByteBased)
+		// If we read a 0x10, this has to be followed by another 0x10, which is how
+		// this value is escaped in DF1, so if we encounter two 0x10, we simply ignore the first.
+		if rbbb.PeekByte(0) == 0x10 && rbbb.PeekByte(1) == 0x10 {
+			if _, err := io.ReadUint8("", 8); err != nil {
+				return 0, err
+			}
+		}
+		// The error has to be reported: the manual array reading this runs until its termination
+		// sequence turns up, so reporting the end of the data as a value would never end.
+		return io.ReadUint8("", 8)
+	}
+}
+
+func WriteData(ctx context.Context, io utils.WriteBuffer, element byte) error {
+	if element == 0x10 {
+		// If a value is 0x10, this has to be duplicated in order to be escaped.
+		if err := io.WriteUint8("", 8, element); err != nil {
+			return err
+		}
+	}
+	return io.WriteUint8("", 8, element)
+}
+
+func DataLength(ctx context.Context, data []byte) uint16 {
+	length := uint16(0)
+	for _, datum := range data {
+		if datum == 0x10 {
+			// If a value is 0x10, this has to be duplicated which increases the message size by one.
+			length++
+		}
+		length++
+	}
+	return length
+}

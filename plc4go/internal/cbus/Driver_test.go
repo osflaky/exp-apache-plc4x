@@ -1,0 +1,232 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
+package cbus
+
+import (
+	"context"
+	"net/url"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/assert"
+
+	plc4go "github.com/apache/plc4x/plc4go/pkg/api"
+	_default "github.com/apache/plc4x/plc4go/spi/default"
+	"github.com/apache/plc4x/plc4go/spi/testutils"
+	"github.com/apache/plc4x/plc4go/spi/transactions"
+	"github.com/apache/plc4x/plc4go/spi/transports"
+	"github.com/apache/plc4x/plc4go/spi/transports/test"
+)
+
+func TestDriver_GetConnection(t *testing.T) {
+	type fields struct {
+		DefaultDriver           _default.DefaultDriver
+		tm                      transactions.RequestTransactionManager
+		awaitSetupComplete      bool
+		awaitDisconnectComplete bool
+	}
+	type args struct {
+		ctx          context.Context
+		transportUrl url.URL
+		transports   map[string]transports.Transport
+		options      map[string][]string
+	}
+	tests := []struct {
+		name         string
+		fields       fields
+		args         args
+		setup        func(t *testing.T, fields *fields, args *args)
+		wantVerifier func(t *testing.T, conn plc4go.PlcConnection, err error) bool
+	}{
+		{
+			name: "get connection transport not found",
+			fields: fields{
+				DefaultDriver:           _default.NewDefaultDriver(nil, "test", "test", "test", NewTagHandler()),
+				awaitSetupComplete:      false,
+				awaitDisconnectComplete: false,
+			},
+			args: args{
+				transportUrl: url.URL{
+					Scheme: "test",
+				},
+				transports: map[string]transports.Transport{},
+				options:    map[string][]string{},
+			},
+			setup: func(t *testing.T, fields *fields, args *args) {
+				args.ctx = testutils.TestContext(t)
+				var cancelFunc context.CancelFunc
+				args.ctx, cancelFunc = context.WithTimeout(args.ctx, 20*time.Second)
+				t.Cleanup(cancelFunc)
+			},
+			wantVerifier: func(t *testing.T, conn plc4go.PlcConnection, err error) bool {
+				assert.Error(t, err)
+				return true
+			},
+		},
+		{
+			name: "get connection invalid options for transport",
+			fields: fields{
+				DefaultDriver:           _default.NewDefaultDriver(nil, "test", "test", "test", NewTagHandler()),
+				awaitSetupComplete:      false,
+				awaitDisconnectComplete: false,
+			},
+			args: args{
+				transportUrl: url.URL{
+					Scheme: "test",
+				},
+				transports: map[string]transports.Transport{},
+				options: map[string][]string{
+					"failTestTransport": {"yesSir"},
+				},
+			},
+			setup: func(t *testing.T, fields *fields, args *args) {
+				args.transports["test"] = test.NewTransport(testutils.EnrichOptionsWithOptionsForTesting(t)...)
+				args.ctx = testutils.TestContext(t)
+				var cancelFunc context.CancelFunc
+				args.ctx, cancelFunc = context.WithTimeout(args.ctx, 20*time.Second)
+				t.Cleanup(cancelFunc)
+			},
+			wantVerifier: func(t *testing.T, conn plc4go.PlcConnection, err error) bool {
+				assert.Error(t, err)
+				assert.ErrorContains(t, err, "couldn't initialize transport configuration for given transport url test:: test transport failed on purpose")
+				return true
+			},
+		},
+		{
+			name: "get connection invalid options for driver",
+			fields: fields{
+				DefaultDriver:           _default.NewDefaultDriver(nil, "test", "test", "test", NewTagHandler()),
+				awaitSetupComplete:      false,
+				awaitDisconnectComplete: false,
+			},
+			args: args{
+				transportUrl: url.URL{
+					Scheme: "test",
+				},
+				transports: map[string]transports.Transport{},
+				options: map[string][]string{
+					"MonitoredApplication1": {"pineapple"},
+				},
+			},
+			setup: func(t *testing.T, fields *fields, args *args) {
+				args.transports["test"] = test.NewTransport(testutils.EnrichOptionsWithOptionsForTesting(t)...)
+				args.ctx = testutils.TestContext(t)
+				var cancelFunc context.CancelFunc
+				args.ctx, cancelFunc = context.WithTimeout(args.ctx, 20*time.Second)
+				t.Cleanup(cancelFunc)
+			},
+			wantVerifier: func(t *testing.T, conn plc4go.PlcConnection, err error) bool {
+				assert.Error(t, err)
+				return true
+			},
+		},
+		{
+			name: "get connection",
+			fields: fields{
+				DefaultDriver:           _default.NewDefaultDriver(nil, "test", "test", "test", NewTagHandler()),
+				awaitSetupComplete:      false,
+				awaitDisconnectComplete: false,
+			},
+			args: args{
+				transportUrl: url.URL{
+					Scheme: "test",
+				},
+				transports: map[string]transports.Transport{},
+				options:    map[string][]string{},
+			},
+			setup: func(t *testing.T, fields *fields, args *args) {
+				args.transports["test"] = test.NewTransport(testutils.EnrichOptionsWithOptionsForTesting(t)...)
+				args.ctx = testutils.TestContext(t)
+				var cancelFunc context.CancelFunc
+				args.ctx, cancelFunc = context.WithTimeout(args.ctx, 20*time.Second)
+				t.Cleanup(cancelFunc)
+			},
+			wantVerifier: func(t *testing.T, conn plc4go.PlcConnection, err error) bool {
+				assert.NoError(t, err)
+				assert.NotNil(t, conn)
+				return true
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.setup != nil {
+				tt.setup(t, &tt.fields, &tt.args)
+			}
+			m := &Driver{
+				DefaultDriver:           tt.fields.DefaultDriver,
+				awaitSetupComplete:      tt.fields.awaitSetupComplete,
+				awaitDisconnectComplete: tt.fields.awaitDisconnectComplete,
+			}
+			connection, err := m.GetConnection(tt.args.ctx, tt.args.transportUrl, tt.args.transports, tt.args.options)
+			assert.Truef(t, tt.wantVerifier(t, connection, err), "GetConnection(%v, %v, %v, %v)", tt.args.ctx, tt.args.transportUrl, tt.args.transports, tt.args.options)
+		})
+	}
+}
+
+func TestDriver_SetAwaitDisconnectComplete(t *testing.T) {
+	driver := NewDriver(testutils.EnrichOptionsWithOptionsForTesting(t)...)
+	t.Cleanup(func() {
+		assert.NoError(t, driver.Close())
+	})
+	driver.(*Driver).SetAwaitDisconnectComplete(true)
+}
+
+func TestDriver_SetAwaitSetupComplete(t *testing.T) {
+	driver := NewDriver(testutils.EnrichOptionsWithOptionsForTesting(t)...)
+	t.Cleanup(func() {
+		assert.NoError(t, driver.Close())
+	})
+	driver.(*Driver).SetAwaitSetupComplete(true)
+}
+
+func TestDriver_SupportsDiscovery(t *testing.T) {
+	driver := NewDriver(testutils.EnrichOptionsWithOptionsForTesting(t)...)
+	t.Cleanup(func() {
+		assert.NoError(t, driver.Close())
+	})
+	driver.(*Driver).SupportsDiscovery()
+}
+
+func TestNewDriver(t *testing.T) {
+	t.Skip("not worth the effort for now, if somebody wants to go ahead and struggle with that stupid deep equal feel free...")
+	tests := []struct {
+		name string
+		want plc4go.PlcDriver
+	}{
+		{
+			name: "create",
+			want: func() *Driver {
+				driver := &Driver{
+					tm:                      transactions.NewRequestTransactionManager(1),
+					awaitSetupComplete:      true,
+					awaitDisconnectComplete: true,
+				}
+				driver.DefaultDriver = _default.NewDefaultDriver(driver, "c-bus", "Clipsal Bus", "tcp", NewTagHandler())
+				return driver
+			}(),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equalf(t, tt.want, NewDriver(), "NewDriver()")
+		})
+	}
+}

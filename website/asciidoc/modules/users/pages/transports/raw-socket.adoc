@@ -1,0 +1,55 @@
+//
+//  Licensed to the Apache Software Foundation (ASF) under one or more
+//  contributor license agreements.  See the NOTICE file distributed with
+//  this work for additional information regarding copyright ownership.
+//  The ASF licenses this file to You under the Apache License, Version 2.0
+//  (the "License"); you may not use this file except in compliance with
+//  the License.  You may obtain a copy of the License at
+//
+//      https://www.apache.org/licenses/LICENSE-2.0
+//
+//  Unless required by applicable law or agreed to in writing, software
+//  distributed under the License is distributed on an "AS IS" BASIS,
+//  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+//  See the License for the specific language governing permissions and
+//  limitations under the License.
+//
+:imagesdir: ../../images/
+:icons: font
+
+= Raw Socket
+
+Sends and receives Ethernet frames directly on a network interface, below IP. Protocols that are
+not carried over TCP or UDP at all - PROFINET real-time traffic, for instance - need this.
+
+It captures and injects through libpcap, so the host needs a libpcap (Linux, macOS) or Npcap
+(Windows) installation, and the process needs permission to open the interface in capture mode -
+root, `CAP_NET_RAW`, or membership of a group the packet-capture device belongs to.
+
+== Transport syntax
+
+----
+{name of the network interface}
+----
+
+The name depends on the operating system - `eth0` or `enp3s0` on Linux, `en0` on macOS,
+`\\Device\\NPF_\{GUID}` on Windows. Leave it out and the transport takes the first interface it
+finds, which is only sensible on a machine with one.
+
+.Example
+[source]
+----
+profinet://en0?raw-socket.remote-address=00:0e:cf:12:34:56&raw-socket.protocol-id=34962
+----
+
+The interface can also be named with the `raw-socket.interface-name` option instead; the address
+segment wins if both name one.
+
+include::partial$transport-raw-socket.adoc[]
+
+`raw-socket.remote-address` and `raw-socket.protocol-id` have no sensible default and must be
+given. The protocol id is the EtherType - `0x88B5` (34997) and `0x8892` (34962) for PROFINET,
+`0x88CC` (35020) for LLDP.
+
+TIP: If frames go missing under load, raise `raw-socket.receive-queue-size` - it bounds how many
+bytes of captured frames may wait for the driver before the oldest are dropped.

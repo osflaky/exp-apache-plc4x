@@ -1,0 +1,230 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
+package bacnetip
+
+import (
+	"context"
+	"encoding/binary"
+	"fmt"
+	"strings"
+	"time"
+
+	apiModel "github.com/apache/plc4x/plc4go/pkg/api/model"
+	apiValues "github.com/apache/plc4x/plc4go/pkg/api/values"
+	readWriteModel "github.com/apache/plc4x/plc4go/protocols/bacnetip/readwrite/model"
+	"github.com/apache/plc4x/plc4go/spi/utils"
+)
+
+type BacNetPlcTag interface {
+	apiModel.PlcTag
+
+	GetObjectId() objectId
+	GetProperties() []property
+}
+
+type plcTag struct {
+	ObjectId objectId
+	// Properties 1..N identifiers
+	Properties []property
+}
+
+// GetPlcSubscriptionType lets a plcTag participate in subscription requests
+// without a separate tag type. The BACnet driver always issues SubscribeCOV
+// regardless of the api/model.PlcSubscriptionType, so we report the most
+// permissive value (ChangeOfState) — the caller's selection only affects
+// plc4go-side filtering, not what we put on the wire.
+func (m plcTag) GetPlcSubscriptionType() apiModel.PlcSubscriptionType {
+	return apiModel.SubscriptionChangeOfState
+}
+
+// GetDuration is part of PlcSubscriptionTag. We report 0 (no per-tag cycle);
+// the COV refresh interval comes from Configuration.CovLifetimeSeconds.
+func (m plcTag) GetDuration() time.Duration {
+	return 0
+}
+
+type objectId struct {
+	// ObjectIdType defines the object type. If not defined ObjectIdTypeProprietary must be defined
+	ObjectIdType *readWriteModel.BACnetObjectType
+	// ObjectIdTypeProprietary is only defined if ObjectIdType is not defined
+	ObjectIdTypeProprietary *uint16
+	// ObjectIdInstance is the instance of this object
+	ObjectIdInstance uint32
+}
+
+func (o objectId) getId() uint16 {
+	if o.ObjectIdType != nil {
+		return uint16(*o.ObjectIdType)
+	} else {
+		return *o.ObjectIdTypeProprietary
+	}
+}
+
+func (o objectId) String() string {
+	var result string
+	if o.ObjectIdType != nil {
+		result += fmt.Sprint(*o.ObjectIdType)
+	} else {
+		result += fmt.Sprint(*o.ObjectIdTypeProprietary)
+	}
+	result += fmt.Sprintf(":%d", o.ObjectIdInstance)
+	return result
+}
+
+type property struct {
+	// PropertyIdentifier defines the property type. If not defined PropertyIdentifierProprietary must be defined
+	PropertyIdentifier *readWriteModel.BACnetPropertyIdentifier
+	// PropertyIdentifierProprietary is only defined if PropertyIdentifier is not defined
+	PropertyIdentifierProprietary *uint32
+	// ArrayIndex Optional index of property
+	ArrayIndex *uint
+	// WritePriority is the optional BACnet write priority (1..16) for commandable
+	// properties. Only meaningful on write requests; ignored on reads.
+	WritePriority *uint8
+}
+
+func (p property) getId() uint32 {
+	if p.PropertyIdentifier != nil {
+		return uint32(*p.PropertyIdentifier)
+	} else {
+		return *p.PropertyIdentifierProprietary
+	}
+}
+
+func (p property) String() string {
+	var result string
+	if p.PropertyIdentifier != nil {
+		result += fmt.Sprint(*p.PropertyIdentifier)
+	} else {
+		result += fmt.Sprint(*p.PropertyIdentifierProprietary)
+	}
+	if p.ArrayIndex != nil {
+		result += fmt.Sprintf(":[%d]", *p.ArrayIndex)
+	}
+	if p.WritePriority != nil {
+		result += fmt.Sprintf(":{%d}", *p.WritePriority)
+	}
+	return result
+}
+
+// addressString spells one property the way the tag handler parses it back:
+// {PROPERTY}[index]{writePriority}. property.String is a display form, with separating colons
+// the address syntax has no place for, and it is what the tag serializes as - so the two are
+// kept apart rather than one being bent into the other.
+func (p property) addressString() string {
+	var result string
+	if p.PropertyIdentifier != nil {
+		result += fmt.Sprint(*p.PropertyIdentifier)
+	} else {
+		result += fmt.Sprint(*p.PropertyIdentifierProprietary)
+	}
+	if p.ArrayIndex != nil {
+		result += fmt.Sprintf("[%d]", *p.ArrayIndex)
+	}
+	if p.WritePriority != nil {
+		result += fmt.Sprintf("{%d}", *p.WritePriority)
+	}
+	return result
+}
+
+// addressString spells the object the way the tag handler parses it back: {TYPE},{instance}.
+func (o objectId) addressString() string {
+	var result string
+	if o.ObjectIdType != nil {
+		result += fmt.Sprint(*o.ObjectIdType)
+	} else {
+		result += fmt.Sprint(*o.ObjectIdTypeProprietary)
+	}
+	return result + fmt.Sprintf(",%d", o.ObjectIdInstance)
+}
+
+// GetAddressString spells the tag the way the tag handler parses it back. It used to render the
+// display form instead, which parses back as nothing at all: the object separator came out as
+// ':' where the syntax wants ',', each property carried a leading ':' the syntax has no place
+// for, and the array index printed the address of the pointer holding it rather than the index.
+func (m plcTag) GetAddressString() string {
+	var properties []string
+	for _, p := range m.Properties {
+		properties = append(properties, p.addressString())
+	}
+	return fmt.Sprintf("%s/%s", m.ObjectId.addressString(), strings.Join(properties, "&"))
+}
+
+func (m plcTag) GetValueType() apiValues.PlcValueType {
+	return apiValues.Struct
+}
+
+// GetArrayInfo reports the shape of the value the caller receives. A BACnet address selects one
+// property, and the bracket it may carry is an index into that property's array - one element,
+// which is a scalar. There is no form here that selects several, so this is always empty.
+func (m plcTag) GetArrayInfo() []apiModel.ArrayInfo {
+	return []apiModel.ArrayInfo{}
+}
+
+func (m plcTag) GetObjectId() objectId {
+	return m.ObjectId
+}
+
+func (m plcTag) GetProperties() []property {
+	return m.Properties
+}
+
+func (m plcTag) Serialize() ([]byte, error) {
+	wb := utils.NewWriteBufferByteBased(utils.WithByteOrderForByteBasedBuffer(binary.BigEndian))
+	if err := m.SerializeWithWriteBuffer(context.Background(), wb); err != nil {
+		return nil, err
+	}
+	return wb.GetBytes(), nil
+}
+
+func (m plcTag) SerializeWithWriteBuffer(ctx context.Context, writeBuffer utils.WriteBuffer) error {
+	if err := writeBuffer.PushContext("BacNetPlcTag"); err != nil {
+		return err
+	}
+
+	if err := writeBuffer.WriteString("objectId", uint32(len([]rune(m.ObjectId.String()))*8), m.ObjectId.String(), utils.WithEncoding("UTF8")); err != nil {
+		return err
+	}
+
+	if err := writeBuffer.PushContext("properties"); err != nil {
+		return err
+	}
+	for _, p := range m.Properties {
+		if err := writeBuffer.WriteString("property", uint32(len([]rune(p.String()))*8), p.String(), utils.WithEncoding("UTF8")); err != nil {
+			return err
+		}
+	}
+	if err := writeBuffer.PopContext("properties"); err != nil {
+		return err
+	}
+
+	if err := writeBuffer.PopContext("BacNetPlcTag"); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (m plcTag) String() string {
+	wb := utils.NewWriteBufferBoxBased(utils.WithWriteBufferBoxBasedOmitEmptyBoxes(), utils.WithWriteBufferBoxBasedMergeSingleBoxes())
+	if err := wb.WriteSerializable(context.Background(), m); err != nil {
+		return err.Error()
+	}
+	return wb.GetBox().String()
+}

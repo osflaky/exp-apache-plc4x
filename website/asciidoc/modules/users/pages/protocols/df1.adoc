@@ -1,0 +1,61 @@
+//
+//  Licensed to the Apache Software Foundation (ASF) under one or more
+//  contributor license agreements.  See the NOTICE file distributed with
+//  this work for additional information regarding copyright ownership.
+//  The ASF licenses this file to You under the Apache License, Version 2.0
+//  (the "License"); you may not use this file except in compliance with
+//  the License.  You may obtain a copy of the License at
+//
+//      https://www.apache.org/licenses/LICENSE-2.0
+//
+//  Unless required by applicable law or agreed to in writing, software
+//  distributed under the License is distributed on an "AS IS" BASIS,
+//  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+//  See the License for the specific language governing permissions and
+//  limitations under the License.
+//
+:imagesdir: ../../images/users/protocols
+:icons: font
+
+= DF1
+
+NOTE: No language implementation of this driver is usable yet. See the
+xref:protocols/index.adoc[protocol support matrix] for what each implementation
+currently does.
+
+IMPORTANT: There is no DF1 driver you can connect with. DF1 currently exists as a protocol
+specification and a generated read/write model only - there is no `df1` connection code in any of
+the language ports, so there is nothing to put a connection string into. This page is kept for
+reference and is not linked from the navigation.
+
+Allen-Bradley's DF1 is the serial protocol used by the SLC-500 and PLC-5 family, and by the
+MicroLogix controllers over their RS-232 port.
+
+== What exists today
+
+The protocol is described in `protocols/df1/src/main/resources/protocols/df1/df1.mspec` and code is
+generated from it for Go, under `plc4go/protocols/df1/readwrite`. The generated model covers the
+symbol/framing layer and the unprotected read exchange:
+
+* `DF1Symbol` with the `DF1SymbolMessageFrame`, `DF1SymbolMessageFrameACK` and
+  `DF1SymbolMessageFrameNAK` variants
+* `DF1Command` with `DF1UnprotectedReadRequest` and `DF1UnprotectedReadResponse`
+* a CRC helper in `StaticHelper.go`, exercised by its own unit test
+
+This model is verified by a ParserSerializer test suite
+(`plc4go/assets/testing/protocols/df1/`), so the wire format is known to round-trip - but nothing
+builds a connection, transport or tag handler on top of it.
+
+== Related: AB-ETH
+
+The DF1 *command* layer is reused by the xref:protocols/ab-eth.adoc[AB-ETH] driver, which tunnels DF1
+commands inside CIP encapsulation over Ethernet. That is a working driver in Java, and it is what
+you want if your device is reachable over Ethernet rather than a serial port. The DF1 message types
+it uses are generated into the ab-eth module rather than shared from here.
+
+== Contributing
+
+A DF1 driver would need a serial transport binding, the framing/ACK-NAK state machine on top of
+`DF1Symbol`, and a tag address syntax for the SLC/PLC-5 data-file notation (e.g. `N7:0`). The
+protocol layer is the part that already exists, so a contribution can start at the driver logic.
+Please raise it on dev@plc4x.apache.org before starting.

@@ -1,0 +1,287 @@
+//
+//  Licensed to the Apache Software Foundation (ASF) under one or more
+//  contributor license agreements.  See the NOTICE file distributed with
+//  this work for additional information regarding copyright ownership.
+//  The ASF licenses this file to You under the Apache License, Version 2.0
+//  (the "License"); you may not use this file except in compliance with
+//  the License.  You may obtain a copy of the License at
+//
+//      https://www.apache.org/licenses/LICENSE-2.0
+//
+//  Unless required by applicable law or agreed to in writing, software
+//  distributed under the License is distributed on an "AS IS" BASIS,
+//  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+//  See the License for the specific language governing permissions and
+//  limitations under the License.
+//
+:imagesdir: ../../images/users/protocols
+:icons: font
+
+= Modbus (TCP/UDP/Serial)
+
+Modbus is a request/response protocol originally published by Modicon in 1979 and now a de
+facto standard for industrial devices of every kind, from PLCs to sensors and energy meters.
+PLC4X speaks it in three variants: Modbus TCP (`modbus-tcp`), Modbus RTU (`modbus-rtu`) and
+Modbus ASCII (`modbus-ascii`) - RTU and ASCII being the two wire formats of "Modbus Serial",
+which despite the name can also be run over TCP or UDP.
+
+Modbus is the most widely used driver in PLC4X, with implementations in C, Go, Java and Python.
+
+== Supported Operations
+
+[cols="2,2a,5a"]
+|===
+|Name |Value |Description
+
+|
+2+| `read`
+
+|
+2+| `write`
+
+|
+| `subscribe`
+| Java only, polling-emulated. Modbus has no push mechanism, so a subscription is a
+periodic read underneath, not a device-initiated notification. The Go driver does not
+subscribe.
+|===
+
+== Connection String
+
+Each Modbus variant has its own connection string, sharing the same layout:
+----
+{modbus-tcp|modbus-rtu|modbus-ascii}:{transport}://{ip-address-or-device}:{port}?{options}
+----
+The transport, port and option fields are optional.
+
+Modbus TCP defaults to the `tcp` transport:
+----
+modbus-tcp:tcp://127.0.0.1:502
+----
+
+Modbus RTU and Modbus ASCII default to the `serial` transport, addressing a serial device
+instead of a host and port:
+----
+modbus-rtu:serial:///dev/ttyUSB0
+----
+
+All three variants can also be run over `tcp` or `udp` - useful for talking to a serial-to-IP
+gateway or a simulator - by naming that transport explicitly, for example
+`modbus-rtu:tcp://127.0.0.1:5020`.
+
+== Connection String Options
+
+=== Modbus TCP
+
+include::partial$modbus-tcp.adoc[]
+
+=== Modbus RTU
+
+include::partial$modbus-rtu.adoc[]
+
+=== Modbus ASCII
+
+include::partial$modbus-ascii.adoc[]
+
+== Tag Addresses
+
+Addressing is implemented in C, Go, Java and Python. See the
+xref:protocols/index.adoc[protocol support matrix] for what each implementation does.
+
+=== General Format
+
+In general all Modbus addresses have this format:
+
+----
+{memory-Area}{start-address}[{selection}]:{data-type}{name-value-tag-options}
+----
+
+If the selection is omitted, a single element is read.
+The selection in brackets is the shared array notation - a single index, an inclusive
+range, and optionally the array's declared lower bound. See
+xref:array-notation.adoc[Addressing arrays] for the full set of forms and what this
+driver can express.
+
+If the data-type part is omitted, it defaults to BOOL for Coils and Discrete Inputs and INT for input, holding and extended registers.
+If the name-value-tag-options part is omitted, simply no configuration fine-tuning is applied.
+
+Additionally address can contain tag configuration:
+----
+{unit-id: 123}
+----
+Specifying this value overrides value of `default-unit-identifier` parameter specified at the connection string.
+
+----
+{byte-order: 'LITTLE_ENDIAN'}
+----
+With this, can the default byte-order be overridden on a per-tag basis. If not provided the `default-payload-byte-order` from the connection string is used, or BIG_ENDIAN, if this is also not provided.
+
+CAUTION: Java caps the plc4x-style address (`coil:`, `discrete-input:`, `input-register:`,
+`holding-register:`, `extended-register:`) at 9 digits; Go's pattern is unbounded, so for
+example `coil:1234567890` is accepted by Go and rejected by Java. This page documents the
+Java syntax - see the modbus entry in the Java/Go address divergence report for this
+restructure.
+
+=== Memory Areas
+
+There are a number of memory areas defined in the Modbus specification.
+
+- Discrete Input Area
+- Coil Area
+- Input Register Area
+- Holding Register
+- Extended Register Area
+
+[cols="2,2a,5,1,2,1"]
+|===
+|Name |Memory Area Aliases |Description |Bit-Size | Permissions | Starting Address
+
+|Discrete Input   |`discrete-input:` or `1` or `1x`   |Boolean input value, usually representing a binary input to the PLC |1 |Read Only|1
+|Coil             |`coil:` or `0` or `0x`             |Boolean value, usually representing a binary output from the PLC   |1 |Read/Write|1
+|Input Register   |`input-register:` or `3` or `3x`   |Short input value, usually representing an analog input to the PLC  |16 |Read Only|1
+|Holding Register |`holding-register:` or `4` or `4x` |Short value, usually representing an analog output from the PLC    |16 |Read/Write|1
+|Extended Register |`extended-register:` or `6` or `6x` |Short value,    |16 |Read/Write|0
+
+|===
+
+Initially the Modbus format allowed up to 10000 address to be specified or the discrete inputs, coils, input registers and holding registers.
+Later on, this was expanded to allow up 65536 address within each memory area (except the extended register area).
+When using the long address format i.e. input-registers:1 the addresses between 1 and 65535 are able to be specified.
+When using the shorter versions there are two formats available  i.e. 30001 and 300001.
+With the shorter format 3XXXX being limited to between 30001 and 39999, while the longer format 3XXXXX being limited to between 300001 and 365535.
+These memory areas all start at address 1.
+
+==== Addresses are 1-based, the wire is 0-based
+
+This is a Modbus speciality worth spelling out, because it is a frequent source of off-by-one
+confusion: the Modbus specification and virtually all device documentation number the registers and
+coils starting at *1*, but the address actually transmitted in the request is that number *minus
+one*.
+
+PLC4X follows the documentation convention - you write the address exactly as the device's manual
+lists it, and the driver decrements it on the way to the wire:
+
+[cols="2,2,2" ,options="header"]
+|===
+|Tag address |Address on the wire |Meaning
+|`coil:1` |0 |the first coil
+|`holding-register:1` |0 |the first holding register
+|`holding-register:100` |99 |the 100th holding register
+|===
+
+So a device manual documenting "holding register 40001" is addressed as `holding-register:1` (or
+`4x00001`), and the request that leaves PLC4X carries address 0.
+
+NOTE: The extended register area is the exception - it is genuinely 0-based in the specification, so
+no decrement is applied there and its lowest usable tag address is `extended-register:1` (which is
+also address 1 on the wire). `extended-register:0` is rejected.
+
+For the extended register area the addresses 0-99999 are able to be specified. These registers are mapped to file records with a length of 10000. Address 600000 corresponds to the first address in file record 0.
+Address 610000 is then the first address in the second file record and so on. It is noted that there is generally only 10 file records (600000 thru to 699999) however the spec allows for 65536 file records.
+Using the extended-register: format you are able to reference all of these, if the shorter format is used then it is limited to 699999.
+Unlike the other memory areas this one is 0-based in the specification, so its addresses are passed
+through unchanged; the lowest usable tag address is nevertheless `extended-register:1`.
+
+=== Data Types
+
+The following data types are supported
+
+- BOOL (boolean)
+- SINT (int 8)
+- USINT (uint 8)
+- BYTE (uint 8)
+- INT (int 16)
+- UINT (uint 16)
+- WORD (uint 16)
+- DINT (int 32)
+- UDINT (uint 32)
+- DWORD (uint 32)
+- LINT (int 64)
+- ULINT (uint 64)
+- LWORD (uint 64)
+- REAL (float)
+- LREAL (double)
+- CHAR (char)
+- WCHAR (2 byte char)
+- STRING (utf-8)
+- WSTRING (utf-16)
+- TIME (duration, milliseconds)
+- LTIME (duration, nanoseconds)
+- DATE (date)
+- LDATE (date)
+- TIME_OF_DAY (time of day)
+- LTIME_OF_DAY (time of day)
+- DATE_AND_TIME (date and time)
+- LDATE_AND_TIME (date and time)
+
+NOTE: Coils and discrete inputs hold a single bit each and therefore support only `BOOL`. A coil or
+discrete-input tag declared with any other data type is accepted by the address parser, but the read
+returns the response code `UNSUPPORTED`.
+
+Reading an array of coils returns all of its elements: `coil:1[0..7]:BOOL` yields a list of 8 values.
+
+=== Examples
+
+To read 10 holding registers starting at address 20 and parse as Unsigned Integers the following examples are all valid.
+
+- holding-register:20[0..9]:UINT
+- 400020[0..9]:UINT
+- 4x00020[0..9]:UINT
+- 40020[0..9]:UINT
+- 4x0020[0..9]:UINT
+
+To read 1 holding register at address 5678 the following examples are valid.
+
+- holding-register:5678
+- 405678
+- 4x05678
+- 45678
+- 4x5678
+
+To read 1 holding register of unit 10 at address 5678 the following examples are valid.
+
+- holding-register:5678{unit-id: 10}
+- 405678{unit-id: 10}
+- 4x05678{unit-id: 10}
+- 45678{unit-id: 10}
+- 4x5678{unit-id: 10}
+
+To read 10 extended registers starting at address 50 the following examples are valid.
+
+- extended-register:50[0..9]
+- 600050[0..9]
+- 6x00050[0..9]
+- 60050[0..9]
+- 6x0050[0..9]
+
+This corresponds to addresses 50-59 in file record 1.
+
+To read 10 extended registers starting at address 9995 the following examples are valid.
+
+- extended-register:9995[0..9]
+- 609995[0..9]
+- 6x09995[0..9]
+- 69995[0..9]
+- 6x9995[0..9]
+
+This corresponds to addresses 9995-9999 in file record 1 and addresses 0-5 in file record 2.
+Note that this request is split into 2 sub requests in the Modbus protocol.
+
+== Notes and Tips
+
+Most memory areas start at address 1, except for the extended register area which starts at 0. These are both mapped to 0x0000 when it is sent in the Modbus protocol.
+
+The input, holding and extended registers consist of 16-bit registers while the discrete input and coil areas consist of bits.
+
+The following Modbus function codes are supported:-
+
+- 0x01 (Read Coils)
+- 0x02 (Read Discrete Inputs)
+- 0x03 (Read Holding Registers)
+- 0x04 (Read Input Registers)
+- 0x05 (Write Single Coil)
+- 0x06 (Write Single Register)
+- 0x0F (Write Multiple Coils)
+- 0x10 (Write Multiple Registers)
+- 0x14 (Read File Record)(Extended Register Read)
+- 0x15 (Write File Record)(Extended Register Write)

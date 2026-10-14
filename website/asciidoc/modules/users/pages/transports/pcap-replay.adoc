@@ -1,0 +1,60 @@
+//
+//  Licensed to the Apache Software Foundation (ASF) under one or more
+//  contributor license agreements.  See the NOTICE file distributed with
+//  this work for additional information regarding copyright ownership.
+//  The ASF licenses this file to You under the Apache License, Version 2.0
+//  (the "License"); you may not use this file except in compliance with
+//  the License.  You may obtain a copy of the License at
+//
+//      https://www.apache.org/licenses/LICENSE-2.0
+//
+//  Unless required by applicable law or agreed to in writing, software
+//  distributed under the License is distributed on an "AS IS" BASIS,
+//  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+//  See the License for the specific language governing permissions and
+//  limitations under the License.
+//
+:imagesdir: ../../images/
+:icons: font
+
+= PCAP Replay
+
+Replays a previously recorded PCAP or PCAPNG capture as if it were a live device. Nothing is sent
+to a network: the driver connects, and the frames it "receives" come out of the file.
+
+This is a debugging and development transport. It is what lets you work on a driver against a
+capture taken from a machine you cannot reach, and it pairs naturally with the
+xref:audit-log.adoc[audit-log] - record once, then replay as often as you need.
+
+== Transport syntax
+
+----
+{path to the capture}
+----
+
+An absolute path names a file on disk. A path that matches a resource on the classpath is read
+from there instead and unpacked to a temporary file, which is how the drivers' own tests ship
+their captures alongside the code.
+
+.Example
+[source]
+----
+profinet:pcap-replay:///var/captures/line-3.pcapng?pcap-replay.speed-factor=1.0
+----
+
+NOTE: The three slashes are not a typo - two end the transport code, and the third begins the
+absolute path.
+
+The capture can also be named with the `pcap-replay.pcap-file` option instead; the address segment
+wins if both name one.
+
+include::partial$transport-pcap-replay.adoc[]
+
+Two options are worth knowing before the first run:
+
+* `pcap-replay.speed-factor` defaults to `0`, which replays the capture as fast as it can be read.
+  Set it to `1.0` to reproduce the original timing - which is what you want when the bug you are
+  chasing is a timing one.
+* `pcap-replay.only-incoming-packets` defaults to `true`, so by default only the frames the device
+  sent are replayed and the driver's own requests go nowhere. That is the right setting for
+  standing in for a device.

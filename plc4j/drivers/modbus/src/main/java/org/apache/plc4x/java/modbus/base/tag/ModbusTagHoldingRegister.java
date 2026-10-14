@@ -1,0 +1,112 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+package org.apache.plc4x.java.modbus.base.tag;
+
+import org.apache.plc4x.java.api.exceptions.PlcInvalidTagException;
+import org.apache.plc4x.java.modbus.readwrite.ModbusDataType;
+import org.apache.plc4x.java.spi.drivers.tags.TagConfigParser;
+
+import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+public class ModbusTagHoldingRegister extends ModbusTag {
+
+    public static final String ADDRESS_PREFIX = "4x";
+    public static final Pattern ADDRESS_PATTERN = Pattern.compile("holding-register:" + ModbusTag.ADDRESS_PATTERN + TagConfigParser.TAG_CONFIG_PATTERN);
+    public static final Pattern ADDRESS_SHORTER_PATTERN = Pattern.compile("4" + ModbusTag.FIXED_DIGIT_MODBUS_PATTERN + TagConfigParser.TAG_CONFIG_PATTERN);
+    public static final Pattern ADDRESS_SHORT_PATTERN = Pattern.compile("4x" + ModbusTag.FIXED_DIGIT_MODBUS_PATTERN + TagConfigParser.TAG_CONFIG_PATTERN);
+
+    protected static final int REGISTER_MAXADDRESS = 65535;
+
+    public ModbusTagHoldingRegister(int address, Integer quantity, ModbusDataType dataType, Map<String, String> config) {
+        super(address, quantity, dataType, config);
+    }
+
+    public ModbusTagHoldingRegister(int address, Integer quantity, Integer stringLength, ModbusDataType dataType, Map<String, String> config) {
+        super(address, quantity, stringLength, dataType, config);
+    }
+
+    public ModbusTagHoldingRegister(int address, Integer quantity, Integer stringLength, ModbusDataType dataType, Map<String, String> config, boolean explicitRange) {
+        super(address, quantity, stringLength, dataType, config, explicitRange);
+    }
+
+    protected String getAddressStringPrefix() {
+        return ADDRESS_PREFIX;
+    }
+
+    @Override
+    public int getLogicalAddress() {
+        return getAddress() + PROTOCOL_ADDRESS_OFFSET;
+    }
+
+    public static boolean matches(String addressString) {
+        return ADDRESS_PATTERN.matcher(addressString).matches() ||
+            ADDRESS_SHORTER_PATTERN.matcher(addressString).matches() ||
+            ADDRESS_SHORT_PATTERN.matcher(addressString).matches();
+    }
+
+    public static Matcher getMatcher(String addressString) {
+        Matcher matcher = ADDRESS_PATTERN.matcher(addressString);
+        if (matcher.matches()) {
+          return matcher;
+        }
+        matcher = ADDRESS_SHORT_PATTERN.matcher(addressString);
+        if (matcher.matches()) {
+          return matcher;
+        }
+        matcher = ADDRESS_SHORTER_PATTERN.matcher(addressString);
+        if (matcher.matches()) {
+          return matcher;
+        }
+        throw new PlcInvalidTagException(addressString, ADDRESS_PATTERN);
+    }
+
+    public static ModbusTagHoldingRegister of(String addressString) {
+        Matcher matcher = getMatcher(addressString);
+        int address = Integer.parseInt(matcher.group("address")) - PROTOCOL_ADDRESS_OFFSET;
+        if (address > REGISTER_MAXADDRESS) {
+            throw new IllegalArgumentException("Address must be less than or equal to " + REGISTER_MAXADDRESS + ". Was " + (address + PROTOCOL_ADDRESS_OFFSET));
+        }
+
+        ModbusDataType dataType = (matcher.group("datatype") != null) ? ModbusDataType.valueOf(matcher.group("datatype")) : ModbusDataType.INT;
+
+        String stringLengthString = matcher.group("stringLength");
+        Integer stringLength = (stringLengthString != null) ? Integer.parseInt(stringLengthString) : null;
+
+        int[] selection = selectionOf(matcher, addressString);
+        // The offset counts elements; the address counts registers.
+        address += registerOffsetOf(selection[0], dataType, stringLength, addressString);
+        int quantity = selection[1];
+        // The wire carries registers, not elements: the limits below are about how much a request
+        // can hold and where the address space ends, so both have to be measured in registers.
+        int registers = registerCountOf(quantity, dataType, stringLength);
+        if ((address + registers) > REGISTER_MAXADDRESS) {
+            throw new IllegalArgumentException("Last requested address is out of range, should be between " + PROTOCOL_ADDRESS_OFFSET + " and " + REGISTER_MAXADDRESS + ". Was " + (address + PROTOCOL_ADDRESS_OFFSET + (registers - 1)));
+        }
+
+        if (registers > 125) {
+            throw new IllegalArgumentException("quantity may not be larger than 125 registers. Was " + registers);
+        }
+
+
+        return new ModbusTagHoldingRegister(address, quantity, stringLength, dataType, TagConfigParser.parse(addressString), selection[2] == 1);
+    }
+
+}

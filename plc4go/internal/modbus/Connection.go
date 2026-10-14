@@ -1,0 +1,313 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
+package modbus
+
+import (
+	"context"
+	"fmt"
+	"math"
+	"sync"
+	"sync/atomic"
+
+	"github.com/rs/zerolog"
+
+	plc4go "github.com/apache/plc4x/plc4go/pkg/api"
+	apiModel "github.com/apache/plc4x/plc4go/pkg/api/model"
+	readWriteModel "github.com/apache/plc4x/plc4go/protocols/modbus/readwrite/model"
+	"github.com/apache/plc4x/plc4go/spi"
+	_default "github.com/apache/plc4x/plc4go/spi/default"
+	"github.com/apache/plc4x/plc4go/spi/errors"
+	"github.com/apache/plc4x/plc4go/spi/interceptors"
+	spiModel "github.com/apache/plc4x/plc4go/spi/model"
+	"github.com/apache/plc4x/plc4go/spi/options"
+	"github.com/apache/plc4x/plc4go/spi/tracer"
+	"github.com/apache/plc4x/plc4go/spi/transactions"
+)
+
+type Connection struct {
+	_default.DefaultConnection
+
+	configuration Configuration
+	messageCodec  spi.MessageCodec
+	options       map[string][]string
+	// writeRequestInterceptor splits a write request into one request per tag. Reads have no such
+	// interceptor: they are merged into block requests by the read optimizer instead, which is the
+	// whole point of merging them.
+	writeRequestInterceptor interceptors.WriteRequestInterceptor
+	// tm bounds how many requests this connection has on the wire at the same time. It belongs to
+	// the connection rather than to the driver, the way plc4j's getMaxConcurrentRequests() does:
+	// the wire it is bounding is this connection's, and two connections to two devices have
+	// nothing to serialise against each other. Every path that sends a PDU - reads, the per-tag
+	// writes and the ping - goes through it (see Requests.go).
+	tm transactions.RequestTransactionManager
+
+	// transactionIdentifier numbers the requests Ping sends; reads and writes have counters of
+	// their own in Reader and Writer.
+	transactionIdentifier atomic.Int32
+
+	connectionId string
+	tracer       tracer.Tracer
+
+	wg sync.WaitGroup // use to track spawned go routines
+
+	log      zerolog.Logger
+	_options []options.WithOption // Used to pass them downstream
+}
+
+var (
+	_ spi.TransportInstanceExposer = (*Connection)(nil)
+)
+
+func NewConnection(configuration Configuration, messageCodec spi.MessageCodec, connectionOptions map[string][]string, tagHandler spi.PlcTagHandler, _options ...options.WithOption) *Connection {
+	customLogger := options.ExtractCustomLoggerOrDefaultToGlobal(_options...)
+	connection := &Connection{
+		configuration: configuration,
+		messageCodec:  messageCodec,
+		options:       connectionOptions,
+		// Modbus writes one operation per PDU - there is no function code that writes two
+		// unrelated addresses - so a write request is still cut into one request per tag. plc4j
+		// keeps per-tag writes for the same reason (ModbusTcpConnection.onWrite).
+		writeRequestInterceptor: interceptors.NewSingleItemRequestInterceptor(
+			spiModel.NewDefaultPlcReadRequest,
+			spiModel.NewDefaultPlcWriteRequest,
+			spiModel.NewDefaultPlcReadResponse,
+			spiModel.NewDefaultPlcWriteResponse,
+			_options...,
+		),
+		tm:       transactions.NewRequestTransactionManager(maxConcurrentRequests, _options...),
+		log:      customLogger,
+		_options: _options,
+	}
+	if traceEnabledOption, ok := connectionOptions["traceEnabled"]; ok {
+		if len(traceEnabledOption) == 1 {
+			connection.tracer = tracer.NewTracer(connection.connectionId, _options...)
+		}
+	}
+	connection.DefaultConnection = _default.NewDefaultConnection(connection,
+		append(_options,
+			_default.WithPlcTagHandler(tagHandler),
+			_default.WithPlcValueHandler(NewValueHandler(_options...)),
+		)...,
+	)
+	return connection
+}
+
+func (c *Connection) GetConnectionId() string {
+	return c.connectionId
+}
+
+func (c *Connection) IsTraceEnabled() bool {
+	return c.tracer != nil
+}
+
+func (c *Connection) GetTracer() tracer.Tracer {
+	return c.tracer
+}
+
+func (c *Connection) GetConnection() plc4go.PlcConnection {
+	return c
+}
+
+func (c *Connection) GetMessageCodec() spi.MessageCodec {
+	return c.messageCodec
+}
+
+// nextTransactionIdentifier hands out the identifier of the next request this connection sends
+// itself. The field on the wire is 16 bits wide, and zero is left out so that it never collides
+// with an uninitialized one.
+func (c *Connection) nextTransactionIdentifier() uint16 {
+	next := c.transactionIdentifier.Add(1)
+	if next > math.MaxUint16 {
+		c.transactionIdentifier.Store(1)
+		next = 1
+	}
+	return uint16(next)
+}
+
+// Ping checks whether the device is still there by reading the configured ping-address, the way
+// plc4j's ModbusTcpConnection.onPing does. The diagnostic function code this used to send (FC 0x08)
+// is optional and a good many devices answer it with an exception or not at all, while a read of a
+// register every device has is a request the device is built to answer.
+func (c *Connection) Ping(ctx context.Context) error {
+	if c.DefaultConnection.IsInvalidated() {
+		return errors.New("connection has been invalidated")
+	}
+	c.log.Trace().Msg("Pinging")
+	tag, err := c.GetPlcTagHandler().ParseTag(c.configuration.pingAddress)
+	if err != nil {
+		return errors.Wrapf(err, "error parsing ping address '%s'", c.configuration.pingAddress)
+	}
+	pingTag, err := castToModbusTagFromPlcTag(tag)
+	if err != nil {
+		return errors.Wrapf(err, "error parsing ping address '%s'", c.configuration.pingAddress)
+	}
+	pdu, err := readRequestPdu(pingTag)
+	if err != nil {
+		return errors.Wrapf(err, "can't ping by reading '%s'", c.configuration.pingAddress)
+	}
+	transactionIdentifier := c.nextTransactionIdentifier()
+	unitIdentifier := pingTag.resolveUnitId(c.configuration.unitIdentifier)
+	adus := c.configuration.adus()
+	pingRequest := adus.buildRequest(transactionIdentifier, unitIdentifier, pdu)
+
+	requestCtx, cancelRequest := withRequestTimeout(ctx, c.configuration.requestTimeout)
+	defer cancelRequest()
+
+	errChan := make(chan error, 1)
+	successChan := make(chan struct{}, 1)
+	// The ping shares the wire with the reads and the writes, so it queues behind them rather than
+	// slipping past them. It can't deadlock behind the permit it is waiting for: it holds nothing
+	// while it waits, and requestCtx bounds the wait the same way it bounds the answer.
+	if err := sendTransacted(requestCtx, c.log, c.messageCodec, c.tm, "ping", pingRequest, func(message spi.Message) bool {
+		return adus.acceptsResponse(pingRequest, message)
+	}, func(message spi.Message) error {
+		c.log.Trace().Msg("Received Message")
+		if message == nil {
+			c.log.Trace().Msg("got no response")
+			select {
+			case errChan <- errors.New("no response"):
+			default:
+				c.log.Warn().Msg("failed to send error signal")
+			}
+			return nil
+		}
+		// A modbus exception still means the device answered, so it is reachable - which is all a
+		// ping asks. plc4j answers a ping the same way; the ping address is a guess that a given
+		// device need not have, and a device that rejects it is still very much alive.
+		if responsePdu, err := adus.extractPdu(message); err == nil {
+			if errorPdu, isError := responsePdu.(readWriteModel.ModbusPDUError); isError {
+				c.log.Warn().
+					Stringer("exceptionCode", errorPdu.GetExceptionCode()).
+					Str("pingAddress", c.configuration.pingAddress).
+					Msg("The device rejected the ping address, but answering at all means it is reachable")
+			}
+		}
+		c.log.Trace().Msg("got valid response")
+		select {
+		case successChan <- struct{}{}:
+		default:
+			c.log.Warn().Msg("failed to send success signal")
+		}
+		return nil
+	}, func(err error) error {
+		c.log.Trace().Msg("Received Error")
+		select {
+		case errChan <- errors.Wrap(err, "got error processing request"):
+		default:
+			c.log.Warn().Msg("failed to send error signal")
+		}
+		return nil
+	}); err != nil {
+		return errors.Wrap(err, "error sending ping request")
+	}
+	select {
+	case err := <-errChan:
+		return errors.Wrap(err, "got error while waiting for response")
+	case <-successChan:
+		return nil
+	case <-requestCtx.Done():
+		return requestCtx.Err()
+	}
+}
+
+func (c *Connection) GetMetadata() apiModel.PlcConnectionMetadata {
+	return &_default.DefaultConnectionMetadata{
+		ProvidesReading: true,
+		ProvidesWriting: true,
+		// Stated explicitly rather than left to the zero value: the modbus driver implements
+		// neither subscribing nor browsing, so both builders fall through to
+		// _default.DefaultConnection and panic. Flip these the moment that changes.
+		ProvidesSubscribing: false,
+		ProvidesBrowsing:    false,
+	}
+}
+
+// ReadRequestBuilder builds a read request that reaches the reader whole. Reads used to be split
+// into one request per tag by a SingleItemRequestInterceptor, which cost a round trip per tag; the
+// reader merges them into block reads instead (see ReadOptimizer.go), and it can only do that if
+// it is handed every tag at once.
+//
+// The builder is this driver's own so that an address it can't parse costs only its own tag rather
+// than the entire request (see ReadRequestBuilder.go).
+func (c *Connection) ReadRequestBuilder() apiModel.PlcReadRequestBuilder {
+	tagHandler := c.GetPlcTagHandler()
+	return newReadRequestBuilder(
+		spiModel.NewDefaultPlcReadRequestBuilder(
+			tagHandler,
+			NewReader(
+				c.configuration,
+				c.messageCodec,
+				c.tm,
+				append(c._options, options.WithCustomLogger(c.log))...,
+			),
+		),
+		tagHandler,
+		c.log,
+	)
+}
+
+func (c *Connection) WriteRequestBuilder() apiModel.PlcWriteRequestBuilder {
+	return spiModel.NewDefaultPlcWriteRequestBuilderWithInterceptor(
+		c.GetPlcTagHandler(),
+		c.GetPlcValueHandler(),
+		NewWriter(
+			c.configuration,
+			c.messageCodec,
+			c.tm,
+			append(c._options, options.WithCustomLogger(c.log))...,
+		),
+		c.writeRequestInterceptor,
+	)
+}
+
+// Close drops the connection and the request transaction manager with it.
+//
+// The codec goes first, and the order is the point: disconnecting it fails every expectation that
+// is still registered, and those failures are what end the transactions the requests in flight are
+// holding. A manager closed ahead of them would hand their permits back to nobody - which costs
+// nothing here, as the manager is going away too, but it would leave requests waiting for a turn
+// that never comes.
+func (c *Connection) Close() error {
+	err := c.DefaultConnection.Close()
+	if tmErr := c.tm.Close(); tmErr != nil {
+		c.log.Warn().Err(tmErr).Msg("Error closing the request transaction manager")
+	}
+	return err
+}
+
+// Invalidate closes the transaction manager as well, which Close alone does not reach.
+//
+// defaultConnection.Invalidate calls d.Close(), and d is the embedded struct - Go resolves that to
+// defaultConnection.Close, not to the Close below, because embedding is not virtual dispatch. So
+// on the invalidation path, which is the common one when a connection breaks, the manager would
+// never be told. It holds no goroutines of its own (the executor is a package-level singleton), so
+// nothing leaks, but anything queued behind the permit would wait out its own context instead of
+// being failed immediately.
+func (c *Connection) Invalidate() {
+	if tmErr := c.tm.Close(); tmErr != nil {
+		c.log.Warn().Err(tmErr).Msg("Error closing the request transaction manager")
+	}
+	c.DefaultConnection.Invalidate()
+}
+
+func (c *Connection) String() string {
+	return fmt.Sprintf("modbus.Connection{flavor: %s, unitIdentifier: %d, defaultPayloadByteOrder: %s, pingAddress: %s, requestTimeout: %s}",
+		c.configuration.flavor, c.configuration.unitIdentifier, c.configuration.defaultPayloadByteOrder, c.configuration.pingAddress, c.configuration.requestTimeout)
+}
